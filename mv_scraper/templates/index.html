@@ -4,17 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MV Metadata Studio</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=static_version) }}" />
+    <link rel="stylesheet" href="/static/styles.css?v=__STATIC_VERSION__" />
   </head>
   <body>
     <div
       id="app"
       v-cloak
-      data-default-target="{{ default_target }}"
-      data-default-ai-provider="{{ default_ai_provider }}"
-      data-default-ai-model="{{ default_ai_model }}"
+      data-default-target="__DEFAULT_TARGET__"
+      data-default-ai-provider="__DEFAULT_AI_PROVIDER__"
+      data-default-ai-model="__DEFAULT_AI_MODEL__"
     >
-      {% raw %}
       <main class="app-shell dashboard-shell">
         <header class="app-topbar">
           <div class="app-topbar-title">
@@ -240,10 +239,9 @@
           </div>
         </div>
       </main>
-      {% endraw %}
     </div>
 
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-    <script src="{{ url_for('static', filename='app.js', v=static_version) }}"></script>
+    <script src="/static/app.js?v=__STATIC_VERSION__"></script>
   </body>
 </html>

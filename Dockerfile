@@ -1,18 +1,21 @@
-FROM python:3.12-slim
+FROM golang:1.23-alpine AS build
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+WORKDIR /src
+
+COPY go.mod ./
+COPY cmd ./cmd
+COPY mv_scraper ./mv_scraper
+
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o /out/mv-metadata-studio ./cmd/server
+
+FROM alpine:3.20
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache ca-certificates
 
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --from=build /out/mv-metadata-studio /app/mv-metadata-studio
+COPY mv_scraper /app/mv_scraper
 
-COPY mv_scraper ./mv_scraper
-
-ENTRYPOINT ["python", "-m"]
-CMD ["mv_scraper.web", "--host", "0.0.0.0", "--port", "7860"]
+ENTRYPOINT ["/app/mv-metadata-studio"]
+CMD ["--host", "0.0.0.0", "--port", "7860"]
