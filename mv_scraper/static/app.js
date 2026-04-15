@@ -1,25 +1,5 @@
 (() => {
   const { createApp, nextTick } = Vue;
-  const PANELS = [
-    { name: "settings", label: "设置" },
-    { name: "status", label: "任务状态" },
-    { name: "logs", label: "实时日志" },
-    { name: "poster", label: "海报工作台" },
-  ];
-  const PANEL_ORDER = PANELS.map((panel) => panel.name);
-  const SWIPE_IGNORE_SELECTOR = [
-    "input",
-    "textarea",
-    "select",
-    "button",
-    "a",
-    "label",
-    "[contenteditable='true']",
-    ".log-output",
-    ".candidate-grid",
-    "[data-no-swipe]",
-  ].join(", ");
-
   const app = createApp({
     data() {
       const root = document.getElementById("app");
@@ -33,14 +13,11 @@
         pollSession: 0,
         running: false,
         autoScroll: true,
-        activePanel: "settings",
+        settingsDrawerOpen: false,
         startingJob: false,
         loadingFiles: false,
         checkingProxy: false,
-        panelTouchStartX: null,
-        panelTouchStartY: null,
-        panelShellHeight: null,
-        panelResizeObserver: null,
+        savingPreferences: false,
 
         noticeText: "",
         noticeType: "",
@@ -48,11 +25,16 @@
         posterNoticeType: "",
         proxyStatusText: "",
         proxyStatusType: "",
+        preferencesNoticeText: "",
+        preferencesNoticeType: "",
 
-        posterQuery: "",
         logs: [],
         posterFiles: [],
         posterFilesLoadedKey: "",
+        candidateDialog: null,
+        activeScrapeFilter: "pending",
+        currentPage: 1,
+        pageSize: 6,
 
         status: {
           scanned: 0,
@@ -80,33 +62,9 @@
           verbose: false,
         },
       };
-      },
+    },
 
-      computed: {
-        panelItems() {
-          return PANELS;
-        },
-
-        activePanelIndex() {
-        const index = PANEL_ORDER.indexOf(this.activePanel);
-        return index >= 0 ? index : 0;
-      },
-
-      panelTrackStyle() {
-        return {
-          transform: `translateX(-${this.activePanelIndex * 100}%)`,
-        };
-      },
-
-      panelShellStyle() {
-        if (!this.panelShellHeight) {
-          return {};
-        }
-
-        return {
-          height: `${this.panelShellHeight}px`,
-        };
-      },
+    computed: {
 
       progressPercent() {
         const scanned = Number(this.status.scanned) || 0;
@@ -149,9 +107,51 @@
           };
         });
       },
+
+      candidateDialogDetails() {
+        return this.getCandidateDialogState();
+      },
+
+      pendingPosterFiles() {
+        return this.posterFiles.filter((file) => !this.isScraped(file));
+      },
+
+      scrapedPosterFiles() {
+        return this.posterFiles.filter((file) => this.isScraped(file));
+      },
+
+      filteredPosterFiles() {
+        return this.activeScrapeFilter === "scraped" ? this.scrapedPosterFiles : this.pendingPosterFiles;
+      },
+
+      totalPages() {
+        return Math.max(1, Math.ceil(this.filteredPosterFiles.length / this.pageSize));
+      },
+
+      pagedPosterFiles() {
+        const start = (this.currentPage - 1) * this.pageSize;
+        return this.filteredPosterFiles.slice(start, start + this.pageSize);
+      },
+
+      paginationSummary() {
+        if (this.filteredPosterFiles.length === 0) {
+          return "0 / 0";
+        }
+
+        const start = (this.currentPage - 1) * this.pageSize + 1;
+        const end = Math.min(this.filteredPosterFiles.length, start + this.pageSize - 1);
+        return `${start}-${end} / ${this.filteredPosterFiles.length}`;
+      },
     },
 
     methods: {
+      toggleSettingsDrawer() {
+        this.settingsDrawerOpen = !this.settingsDrawerOpen;
+        if (this.settingsDrawerOpen) {
+          this.syncScrollNow();
+        }
+      },
+
       setNotice(text, type = "") {
         this.noticeText = text || "";
         this.noticeType = type || "";
@@ -165,6 +165,88 @@
       setProxyStatus(text, type = "") {
         this.proxyStatusText = text || "";
         this.proxyStatusType = type || "";
+      },
+
+      setPreferencesNotice(text, type = "") {
+        this.preferencesNoticeText = text || "";
+        this.preferencesNoticeType = type || "";
+      },
+
+      isScraped(file) {
+        return Boolean(file?.poster_exists && file?.nfo_exists);
+      },
+
+      scrollToWorkspaceTop() {
+        nextTick(() => {
+          const node = this.$refs.workspaceCard;
+          if (node && typeof node.scrollIntoView === "function") {
+            node.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        });
+      },
+
+      setScrapeFilter(filter) {
+        if (filter !== "pending" && filter !== "scraped") {
+          return;
+        }
+
+        this.activeScrapeFilter = filter;
+        this.currentPage = 1;
+        this.scrollToWorkspaceTop();
+      },
+
+      syncCurrentPage() {
+        const maxPage = Math.max(1, Math.ceil(this.filteredPosterFiles.length / this.pageSize));
+        if (this.currentPage > maxPage) {
+          this.currentPage = maxPage;
+        }
+      },
+
+      openCandidateDialog(file, candidate) {
+        if (!file || !candidate || file.applying || candidate.applying) {
+          return;
+        }
+
+        this.candidateDialog = {
+          videoPath: file.video_path,
+          imageUrl: candidate.image_url,
+        };
+      },
+
+      closeCandidateDialog() {
+        this.candidateDialog = null;
+      },
+
+      goToPage(page) {
+        const nextPage = Math.min(this.totalPages, Math.max(1, Number(page) || 1));
+        if (nextPage === this.currentPage) {
+          return;
+        }
+
+        this.currentPage = nextPage;
+        this.scrollToWorkspaceTop();
+      },
+
+      goToPreviousPage() {
+        this.goToPage(this.currentPage - 1);
+      },
+
+      goToNextPage() {
+        this.goToPage(this.currentPage + 1);
+      },
+
+      getCandidateDialogState() {
+        if (!this.candidateDialog) {
+          return { file: null, candidate: null };
+        }
+
+        const file = this.posterFiles.find((item) => item.video_path === this.candidateDialog.videoPath) || null;
+        if (!file) {
+          return { file: null, candidate: null };
+        }
+
+        const candidate = file.candidates.find((item) => item.image_url === this.candidateDialog.imageUrl) || null;
+        return { file, candidate };
       },
 
       async parseError(response) {
@@ -192,125 +274,6 @@
         } catch (_error) {
           return isoString;
         }
-      },
-
-      getPanelIndex(panelName) {
-        return PANEL_ORDER.indexOf(panelName);
-      },
-
-      getPanelRefName(panelName = this.activePanel) {
-        return {
-          settings: "settingsPanel",
-          status: "statusPanel",
-          logs: "logsPanel",
-          poster: "posterPanel",
-        }[panelName] || "settingsPanel";
-      },
-
-      syncPanelShellHeight() {
-        nextTick(() => {
-          const panel = this.$refs[this.getPanelRefName()];
-          if (panel) {
-            this.panelShellHeight = panel.offsetHeight;
-          }
-        });
-      },
-
-      setupPanelResizeObserver() {
-        if (typeof ResizeObserver === "undefined") {
-          this.syncPanelShellHeight();
-          return;
-        }
-
-        if (this.panelResizeObserver) {
-          this.panelResizeObserver.disconnect();
-        }
-
-        this.panelResizeObserver = new ResizeObserver(() => {
-          this.syncPanelShellHeight();
-        });
-
-        ["settingsPanel", "statusPanel", "logsPanel", "posterPanel"].forEach((refName) => {
-          const panel = this.$refs[refName];
-          if (panel) {
-            this.panelResizeObserver.observe(panel);
-          }
-        });
-
-        this.syncPanelShellHeight();
-      },
-
-      handleActivePanelChange(panelName) {
-        if (panelName === "poster") {
-          this.ensurePosterFilesLoaded();
-        }
-
-        if (panelName === "logs") {
-          this.syncScrollNow();
-        }
-
-        this.syncPanelShellHeight();
-      },
-
-      selectPanel(panelName) {
-        const nextIndex = this.getPanelIndex(panelName);
-        if (nextIndex === -1) {
-          return;
-        }
-
-        if (panelName === this.activePanel) {
-          this.handleActivePanelChange(panelName);
-          return;
-        }
-
-        this.activePanel = panelName;
-        this.handleActivePanelChange(panelName);
-      },
-
-      movePanel(step) {
-        const currentIndex = this.getPanelIndex(this.activePanel);
-        if (currentIndex === -1) {
-          return;
-        }
-
-        const nextIndex = Math.min(PANEL_ORDER.length - 1, Math.max(0, currentIndex + step));
-        if (nextIndex === currentIndex) {
-          return;
-        }
-
-        this.activePanel = PANEL_ORDER[nextIndex];
-        this.handleActivePanelChange(this.activePanel);
-      },
-
-      handlePanelTouchStart(event) {
-        const touch = event.touches?.[0];
-        const target = event.target;
-        if (!touch || target?.closest(SWIPE_IGNORE_SELECTOR)) {
-          this.panelTouchStartX = null;
-          this.panelTouchStartY = null;
-          return;
-        }
-
-        this.panelTouchStartX = touch.clientX;
-        this.panelTouchStartY = touch.clientY;
-      },
-
-      handlePanelTouchEnd(event) {
-        const touch = event.changedTouches?.[0];
-        if (!touch || this.panelTouchStartX === null || this.panelTouchStartY === null) {
-          return;
-        }
-
-        const deltaX = touch.clientX - this.panelTouchStartX;
-        const deltaY = touch.clientY - this.panelTouchStartY;
-        this.panelTouchStartX = null;
-        this.panelTouchStartY = null;
-
-        if (Math.abs(deltaX) < 48 || Math.abs(deltaX) <= Math.abs(deltaY)) {
-          return;
-        }
-
-        this.movePanel(deltaX < 0 ? 1 : -1);
       },
 
       getPosterFilesKey() {
@@ -386,7 +349,6 @@
 
         try {
           const statusPayload = await this.fetchStatus();
-          await this.fetchLogs();
 
           this.pollFailureCount = 0;
 
@@ -452,18 +414,51 @@
         };
       },
 
-      normalizePosterQuery(value) {
-        const text = String(value ?? "").trim();
-        if (!text) {
-          return "";
-        }
+      async loadPreferences() {
+        try {
+          const response = await fetch("/api/preferences");
+          if (!response.ok) {
+            return;
+          }
 
-        const normalized = text.toLowerCase();
-        if (["none", "null", "undefined", "nan", "留空自动", "自动"].includes(normalized)) {
-          return "";
+          const payload = await response.json();
+          const target = String(payload.target || "").trim();
+          if (target) {
+            this.form.target = target;
+          }
+        } catch (_error) {
         }
+      },
 
-        return text;
+      async savePreferences() {
+        const target = String(this.form.target || "").trim() || "/media";
+        this.savingPreferences = true;
+        this.setPreferencesNotice("正在保存路径...");
+
+        try {
+          const response = await fetch("/api/preferences", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ target }),
+          });
+
+          if (!response.ok) {
+            const error = await this.parseError(response);
+            this.setPreferencesNotice(`保存失败: ${error}`, "error");
+            return;
+          }
+
+          const payload = await response.json();
+          this.form.target = String(payload.target || target).trim() || "/media";
+          this.posterFiles = [];
+          this.posterFilesLoadedKey = "";
+          this.currentPage = 1;
+          this.setPreferencesNotice(`路径已保存: ${this.form.target}`, "ok");
+        } catch (error) {
+          this.setPreferencesNotice(`保存失败: ${error.message}`, "error");
+        } finally {
+          this.savingPreferences = false;
+        }
       },
 
       async startJob() {
@@ -584,6 +579,7 @@
         const newPosterFiles = [...this.posterFiles];
         newPosterFiles[index] = newFile;
         this.posterFiles = newPosterFiles;
+        this.syncCurrentPage();
       },
 
       async loadPosterFiles(showMissingTargetError = true) {
@@ -592,6 +588,8 @@
         if (!common.target) {
           this.posterFiles = [];
           this.posterFilesLoadedKey = "";
+          this.activeScrapeFilter = "pending";
+          this.currentPage = 1;
           if (showMissingTargetError) {
             this.setPosterNotice("请先填写扫描路径", "error");
           }
@@ -618,6 +616,8 @@
           const files = Array.isArray(body.files) ? body.files : [];
           this.posterFiles = files.map((file) => this.enhancePosterFile(file));
           this.posterFilesLoadedKey = requestKey;
+          this.activeScrapeFilter = "pending";
+          this.currentPage = 1;
           this.setPosterNotice(`已载入 ${body.count || 0} 个 MV 文件`, "ok");
         } catch (error) {
           this.setPosterNotice(`加载失败: ${error.message}`, "error");
@@ -632,10 +632,6 @@
         }
 
         const videoPath = file.video_path;
-        const normalizedPosterQuery = this.normalizePosterQuery(this.posterQuery);
-        if (normalizedPosterQuery !== this.posterQuery) {
-          this.posterQuery = normalizedPosterQuery;
-        }
         const requestId = Number(file.searchRequestId || 0) + 1;
         this.refreshPosterFileState(videoPath, (current) => ({
           ...current,
@@ -650,7 +646,6 @@
           video_path: videoPath,
           timeout: Number(this.form.timeout) || 20,
           proxy: this.form.proxy || null,
-          query: normalizedPosterQuery || null,
         };
 
         try {
@@ -764,10 +759,13 @@
           file.poster_path = body.poster_path;
           file.statusLine = "应用成功";
           file.statusType = "ok";
+          this.closeCandidateDialog();
 
           if (body.nfo_synced) {
             file.nfo_exists = true;
           }
+
+          this.syncCurrentPage();
         } catch (error) {
           file.statusLine = error.message;
           file.statusType = "error";
@@ -779,19 +777,14 @@
     },
 
     mounted() {
-      this.posterQuery = this.normalizePosterQuery(this.posterQuery);
+      this.loadPreferences();
       this.startPolling(0);
-      this.setupPanelResizeObserver();
-      this.handleActivePanelChange(this.activePanel);
+      this.ensurePosterFilesLoaded();
     },
 
     beforeUnmount() {
       this.pollSession += 1;
       this.stopPolling();
-      if (this.panelResizeObserver) {
-        this.panelResizeObserver.disconnect();
-        this.panelResizeObserver = null;
-      }
     },
   });
 

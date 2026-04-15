@@ -15,323 +15,228 @@
       data-default-ai-model="{{ default_ai_model }}"
     >
       {% raw %}
-      <main class="app-shell">
-        <header class="hero">
-          <div class="hero-content">
+      <main class="app-shell dashboard-shell">
+        <header class="app-topbar">
+          <div class="app-topbar-title">
             <h1>MV Metadata Studio</h1>
+          </div>
+          <div class="app-topbar-actions">
+            <button class="btn btn-secondary settings-toggle" type="button" @click="toggleSettingsDrawer" :aria-expanded="settingsDrawerOpen ? 'true' : 'false'" aria-controls="settings-drawer">
+              {{ settingsDrawerOpen ? "收起设置" : "展开设置" }}
+            </button>
           </div>
         </header>
 
-         <nav class="top-menu" aria-label="主面板切换">
-           <button
-             v-for="item in panelItems"
-             :key="item.name"
-             class="btn menu-btn"
-             type="button"
-             :class="activePanel === item.name ? 'btn-primary' : 'btn-secondary'"
-             @click="selectPanel(item.name)"
-           >
-             {{ item.label }}
-           </button>
-         </nav>
+        <aside v-if="settingsDrawerOpen" id="settings-drawer" class="card settings-drawer" aria-label="设置面板">
+          <section class="drawer-section">
+            <div class="panel-title-row">
+              <div><h2 class="panel-title">路径与 AI 设置</h2></div>
+            </div>
 
-          <div class="panel-indicators" role="tablist" aria-label="面板指示器">
-            <button
-              v-for="item in panelItems"
-              :key="`indicator-${item.name}`"
-              class="panel-dot"
-             :class="activePanel === item.name ? 'is-active' : ''"
-             type="button"
-             role="tab"
-             :aria-selected="activePanel === item.name ? 'true' : 'false'"
-             :aria-label="`切换到${item.label}`"
-             @click="selectPanel(item.name)"
-           >
-             <span aria-hidden="true"></span>
-           </button>
+            <div class="form-section compact-section">
+              <h3 class="form-section-title">基础参数</h3>
+              <div class="form-field full-width">
+                <label>扫描路径</label>
+                <div class="path-save-row">
+                  <input v-model.trim="form.target" type="text" placeholder="请输入扫描路径" required />
+                  <button class="btn btn-secondary" type="button" @click="savePreferences" :disabled="savingPreferences" :class="{ 'btn-loading': savingPreferences }">
+                    {{ savingPreferences ? "保存中..." : "保存路径" }}
+                  </button>
+                </div>
+                <p v-if="preferencesNoticeText" class="message" :class="preferencesNoticeType">{{ preferencesNoticeText }}</p>
+              </div>
+
+              <div class="form-grid">
+                <div class="form-field">
+                  <label>海报命名</label>
+                  <select v-model="form.poster_style">
+                    <option value="basename">video-poster.jpg</option>
+                    <option value="folder">poster.jpg</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>超时秒数</label>
+                  <input v-model.number="form.timeout" type="number" min="5" max="120" />
+                </div>
+              </div>
+            </div>
+
+            <div class="form-section compact-section">
+              <h3 class="form-section-title">AI 配置</h3>
+              <div class="form-grid">
+                <div class="form-field">
+                  <label>AI 服务商</label>
+                  <select v-model="form.ai_provider">
+                    <option value="openai">OpenAI</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="siliconflow">SiliconFlow</option>
+                    <option value="custom">自定义</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label>AI 模型</label>
+                  <input v-model.trim="form.ai_model" type="text" placeholder="gpt-4.1-mini" />
+                </div>
+              </div>
+
+              <div class="form-field full-width">
+                <label>API Key</label>
+                <input v-model.trim="form.ai_api_key" type="password" autocomplete="off" placeholder="可留空使用环境变量" />
+              </div>
+
+              <div class="form-field full-width">
+                <label>Base URL</label>
+                <input v-model.trim="form.ai_base_url" type="text" placeholder="自定义 API 地址" />
+              </div>
+            </div>
+
+            <div class="form-section compact-section">
+              <h3 class="form-section-title">网络与执行</h3>
+              <div class="form-field full-width">
+                <label>代理（可选）</label>
+                <div class="proxy-grid">
+                  <input v-model.trim="form.proxy" type="text" placeholder="http://127.0.0.1:7890" />
+                  <button class="btn btn-secondary" type="button" @click="checkProxy" :disabled="checkingProxy" :class="{ 'btn-loading': checkingProxy }">
+                    {{ checkingProxy ? "检测中..." : "检测代理" }}
+                  </button>
+                </div>
+                <p v-if="proxyStatusText" class="message" :class="proxyStatusType">{{ proxyStatusText }}</p>
+              </div>
+
+              <div class="checkbox-grid">
+                <label class="checkbox-item"><input v-model="form.recursive" type="checkbox" /> 递归扫描</label>
+                <label class="checkbox-item"><input v-model="form.overwrite" type="checkbox" /> 覆盖已有结果</label>
+                <label class="checkbox-item"><input v-model="form.dry_run" type="checkbox" /> 试运行</label>
+                <label class="checkbox-item"><input v-model="form.verbose" type="checkbox" /> 详细日志</label>
+              </div>
+
+              <p v-if="noticeText" class="message" :class="noticeType">{{ noticeText }}</p>
+            </div>
+          </section>
+        </aside>
+
+        <section ref="workspaceCard" class="card workspace-card">
+          <div class="panel-title-row workspace-header">
+            <div>
+              <h2 class="panel-title">海报工作台</h2>
+            </div>
+            <div class="workspace-toolbar">
+              <div class="workspace-summary" aria-label="工作台概览">
+                <span>{{ running ? "运行中" : "空闲" }}</span>
+                <strong>{{ progressPercent }}%</strong>
+              </div>
+              <div class="panel-actions panel-actions--tight">
+                <button class="btn btn-primary" type="button" @click="loadPosterFiles(true)" :disabled="loadingFiles" :class="{ 'btn-loading': loadingFiles }">
+                  {{ loadingFiles ? "读取中..." : "读取MV列表" }}
+                </button>
+                <button class="btn btn-primary" type="button" @click="startJob" :disabled="running || startingJob" :class="{ 'btn-loading': startingJob }">
+                  {{ startingJob ? "启动中..." : "开始批处理" }}
+                </button>
+              </div>
+            </div>
           </div>
 
-        <div class="panel-shell" :style="panelShellStyle" @touchstart.passive="handlePanelTouchStart" @touchend.passive="handlePanelTouchEnd">
-          <div class="panel-track" :style="panelTrackStyle">
-            <form
-              ref="settingsPanel"
-              class="card panel-card panel-page"
-              :class="{ 'is-active': activePanel === 'settings' }"
-              :aria-hidden="activePanel !== 'settings'"
-              :inert="activePanel !== 'settings' ? '' : null"
-              @submit.prevent="startJob"
-            >
-              <div class="panel-title-row">
-                <h2 class="panel-title">设置</h2>
-                <div class="panel-actions">
-                  <button class="btn btn-primary" type="button" @click="loadPosterFiles(true)" :disabled="loadingFiles" :class="{ 'btn-loading': loadingFiles }">
-                    {{ loadingFiles ? "读取中..." : "读取MV列表" }}
-                  </button>
-                  <button class="btn btn-primary" type="submit" :disabled="running || startingJob" :class="{ 'btn-loading': startingJob }">
-                    {{ startingJob ? "启动中..." : "开始批处理" }}
-                  </button>
+          <p v-if="posterNoticeText" class="message" :class="posterNoticeType">{{ posterNoticeText }}</p>
+
+          <div v-if="posterFiles.length > 0" class="scrape-filter-bar" aria-label="文件分组">
+            <button class="scrape-filter-btn" :class="activeScrapeFilter === 'pending' ? 'is-active' : ''" type="button" @click="setScrapeFilter('pending')">
+              未刮削
+              <span>{{ pendingPosterFiles.length }}</span>
+            </button>
+            <button class="scrape-filter-btn" :class="activeScrapeFilter === 'scraped' ? 'is-active' : ''" type="button" @click="setScrapeFilter('scraped')">
+              已刮削
+              <span>{{ scrapedPosterFiles.length }}</span>
+            </button>
+          </div>
+
+          <div v-if="posterFiles.length === 0" class="poster-empty">
+            点击"读取MV列表"加载文件
+          </div>
+
+          <div v-else-if="filteredPosterFiles.length === 0" class="poster-empty">
+            {{ activeScrapeFilter === 'scraped' ? '暂无已刮削文件' : '暂无未刮削文件' }}
+          </div>
+
+          <div v-else class="poster-list">
+            <article v-for="file in pagedPosterFiles" :key="`${file.video_path}::${file.searchRequestId}`" class="poster-item">
+              <div class="poster-header">
+                <div class="poster-info">
+                  <h4>{{ file.file_name }}</h4>
+                  <p class="poster-path">{{ file.video_path }}</p>
+                  <p>{{ file.parsed ? `${file.artist || "Unknown"} - ${file.title || "Unknown"}` : "未识别出歌手/歌名" }}</p>
+                  <p class="status">{{ file.poster_exists ? `已有海报: ${file.poster_path}` : `无海报: ${file.poster_path}` }}</p>
                 </div>
+                <button
+                  class="btn btn-primary btn-small"
+                  type="button"
+                  @click="searchPoster(file)"
+                  :disabled="file.searching || file.applying"
+                  :class="{ 'btn-loading': file.searching }"
+                >
+                  {{ file.searching ? "搜索中..." : "搜索海报" }}
+                </button>
               </div>
 
-              <div class="form-section">
-                <h3 class="form-section-title">基础参数</h3>
-                <div class="form-field full-width">
-                  <label>扫描路径</label>
-                  <input v-model.trim="form.target" type="text" placeholder="请输入扫描路径" required />
-                </div>
+              <p v-if="file.statusLine" class="message" :class="file.statusType">{{ file.statusLine }}</p>
+              <p v-if="file.searching" class="candidate-count">正在为该文件搜索候选...</p>
+              <p v-else-if="file.candidates.length > 0" class="candidate-count">共 {{ file.candidates.length }} 张候选</p>
 
-                <div class="form-grid">
-                  <div class="form-field">
-                    <label>海报命名</label>
-                    <select v-model="form.poster_style">
-                      <option value="basename">video-poster.jpg</option>
-                      <option value="folder">poster.jpg</option>
-                    </select>
-                  </div>
-                  <div class="form-field">
-                    <label>超时秒数</label>
-                    <input v-model.number="form.timeout" type="number" min="5" max="120" />
-                  </div>
-                </div>
-              </div>
-
-              <div class="form-section">
-                <h3 class="form-section-title">AI 配置</h3>
-                <div class="form-grid">
-                  <div class="form-field">
-                    <label>AI 服务商</label>
-                    <select v-model="form.ai_provider">
-                      <option value="openai">OpenAI</option>
-                      <option value="openrouter">OpenRouter</option>
-                      <option value="deepseek">DeepSeek</option>
-                      <option value="siliconflow">SiliconFlow</option>
-                      <option value="custom">自定义</option>
-                    </select>
-                  </div>
-                  <div class="form-field">
-                    <label>AI 模型</label>
-                    <input v-model.trim="form.ai_model" type="text" placeholder="gpt-4.1-mini" />
-                  </div>
-                </div>
-
-                <div class="form-field full-width">
-                  <label>API Key</label>
-                  <input v-model.trim="form.ai_api_key" type="password" autocomplete="off" placeholder="可留空使用环境变量" />
-                </div>
-
-                <div class="form-field full-width">
-                  <label>Base URL</label>
-                  <input v-model.trim="form.ai_base_url" type="text" placeholder="自定义 API 地址" />
-                </div>
-              </div>
-
-              <div class="form-section">
-                <h3 class="form-section-title">网络与执行</h3>
-                <div class="form-field full-width">
-                  <label>代理（可选）</label>
-                  <div class="proxy-grid">
-                    <input v-model.trim="form.proxy" type="text" placeholder="http://127.0.0.1:7890" />
-                    <button class="btn btn-secondary" type="button" @click="checkProxy" :disabled="checkingProxy" :class="{ 'btn-loading': checkingProxy }">
-                      {{ checkingProxy ? "检测中..." : "检测代理" }}
-                    </button>
-                  </div>
-                  <p v-if="proxyStatusText" class="message" :class="proxyStatusType">{{ proxyStatusText }}</p>
-                </div>
-
-                <div class="checkbox-grid">
-                  <label class="checkbox-item"><input v-model="form.recursive" type="checkbox" /> 递归扫描</label>
-                  <label class="checkbox-item"><input v-model="form.overwrite" type="checkbox" /> 覆盖已有结果</label>
-                  <label class="checkbox-item"><input v-model="form.dry_run" type="checkbox" /> 试运行</label>
-                  <label class="checkbox-item"><input v-model="form.verbose" type="checkbox" /> 详细日志</label>
-                </div>
-
-                <p v-if="noticeText" class="message" :class="noticeType">{{ noticeText }}</p>
-              </div>
-            </form>
-
-            <section
-              ref="statusPanel"
-              class="card panel-card panel-page"
-              :class="{ 'is-active': activePanel === 'status' }"
-              :aria-hidden="activePanel !== 'status'"
-              :inert="activePanel !== 'status' ? '' : null"
-            >
-              <div class="panel-title-row">
-                <h2 class="panel-title">任务状态</h2>
-                <strong class="status-percent">{{ progressPercent }}%</strong>
-              </div>
-
-              <div class="status-grid">
-                <article class="status-card">
-                  <span>总文件</span>
-                  <strong>{{ status.scanned }}</strong>
-                </article>
-                <article class="status-card">
-                  <span>已处理</span>
-                  <strong>{{ status.processed }}</strong>
-                </article>
-                <article class="status-card">
-                  <span>成功</span>
-                  <strong :class="{ 'text-ok': Number(status.success) > 0 }">{{ status.success }}</strong>
-                </article>
-                <article class="status-card">
-                  <span>跳过</span>
-                  <strong>{{ status.skipped }}</strong>
-                </article>
-                <article class="status-card">
-                  <span>失败</span>
-                  <strong :class="{ 'text-error': Number(status.failed) > 0 }">{{ status.failed }}</strong>
-                </article>
-                <article class="status-card">
-                  <span>状态</span>
-                  <strong class="status-text">
-                    {{ running ? "运行中" : "空闲" }}
-                  </strong>
-                </article>
-              </div>
-
-              <div class="progress-wrapper">
-                <div class="progress-header">
-                  <span>处理进度</span>
-                </div>
-                <div class="progress-track">
-                  <div class="progress-fill" :style="{ width: `${progressPercent}%` }"></div>
-                </div>
-              </div>
-
-              <div class="info-list">
-                <div class="info-item">
-                  <span class="label">当前文件</span>
-                  <span>{{ status.current_file || "-" }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">开始时间</span>
-                  <span>{{ formatTime(status.started_at) }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">结束时间</span>
-                  <span>{{ formatTime(status.finished_at) }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">成功率</span>
-                  <span>{{ successRate }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">状态</span>
-                  <span class="status-text">
-                    {{ running ? "运行中" : "空闲" }}
-                  </span>
-                </div>
-              </div>
-            </section>
-
-            <section
-              ref="logsPanel"
-              class="card panel-card panel-page"
-              :class="{ 'is-active': activePanel === 'logs' }"
-              :aria-hidden="activePanel !== 'logs'"
-              :inert="activePanel !== 'logs' ? '' : null"
-            >
-              <div class="panel-title-row">
-                <h2 class="panel-title">实时日志</h2>
-                <div class="panel-actions panel-actions--tight">
-                  <label class="log-toggle">
-                    <input v-model="autoScroll" type="checkbox" /> 自动滚动
-                  </label>
-                  <button class="btn btn-secondary btn-small" type="button" @click="clearLogPanel">清空</button>
-                </div>
-              </div>
-
-              <div ref="logOutput" class="log-output" data-no-swipe>
-                <p v-if="parsedLogs.length === 0" class="log-empty">
-                  {{ running ? "任务运行中，正在刷新日志..." : "暂无日志，任务运行后会在这里自动刷新。" }}
-                </p>
-                <div v-for="(line, idx) in parsedLogs" :key="idx" class="log-line" :class="`level-${line.level}`">
-                  <span v-if="line.time" class="log-time">{{ line.time }}</span>
-                  <span class="log-text">{{ line.text }}</span>
-                </div>
-              </div>
-            </section>
-
-            <section
-              ref="posterPanel"
-              class="card panel-card panel-page"
-              :class="{ 'is-active': activePanel === 'poster' }"
-              :aria-hidden="activePanel !== 'poster'"
-              :inert="activePanel !== 'poster' ? '' : null"
-            >
-              <div class="panel-title-row">
-                <h2 class="panel-title">海报工作台</h2>
-                <div class="panel-inline">
-                  <label>搜索关键词覆盖</label>
-                  <input v-model.trim="posterQuery" type="text" placeholder="留空自动" />
-                </div>
-              </div>
-
-              <p v-if="posterNoticeText" class="message" :class="posterNoticeType">{{ posterNoticeText }}</p>
-
-              <div v-if="posterFiles.length === 0" class="poster-empty">
-                点击"读取MV列表"加载文件
-              </div>
-
-              <div v-else class="poster-list">
-                <article v-for="file in posterFiles" :key="`${file.video_path}::${file.searchRequestId}`" class="poster-item">
-                  <div class="poster-header">
-                    <div class="poster-info">
-                      <h4>{{ file.file_name }}</h4>
-                      <p class="debug-path" style="font-size:10px;color:#999;">{{ file.video_path }}</p>
-                      <p>{{ file.parsed ? `${file.artist || "Unknown"} - ${file.title || "Unknown"}` : "未识别出歌手/歌名" }}</p>
-                      <p class="status">{{ file.poster_exists ? `已有海报: ${file.poster_path}` : `无海报: ${file.poster_path}` }}</p>
-                    </div>
-                    <button
-                      class="btn btn-primary btn-small"
-                      type="button"
-                      @click="searchPoster(file)"
-                      :disabled="file.searching || file.applying"
-                      :class="{ 'btn-loading': file.searching }"
-                    >
-                      {{ file.searching ? "搜索中..." : "搜索海报" }}
-                    </button>
-                  </div>
-
-                  <p v-if="file.statusLine" class="message" :class="file.statusType">{{ file.statusLine }}</p>
-                  <p v-if="file.searching" class="candidate-count">正在为该文件搜索候选...</p>
-                  <p v-else-if="file.candidates.length > 0" class="candidate-count">共 {{ file.candidates.length }} 张候选</p>
-
-                  <div
-                    v-if="file.candidates.length > 0"
-                    :key="`refresh-${file.video_path}-${file.searchRequestId}`"
-                    class="candidate-grid"
-                    data-no-swipe
-                  >
-                    <div
-                      v-for="candidate in file.candidates"
-                      :key="`${file.video_path}::${candidate.image_url}::${candidate.source || ''}::${candidate.__idx}`"
-                      class="candidate-item"
-                      :style="{ '--item-index': candidate.__idx }"
-                      :class="{ 'candidate-item--loading': candidate.applying || file.applying }"
-                      :title="[candidate.source || '', candidate.title || '未命名', candidate.subtitle || ''].filter(Boolean).join('\n')"
-                      tabindex="0"
-                      @click="applyPoster(file, candidate)"
-                    >
-                      <div class="candidate-surface">
-                        <img :src="candidate.image_url" :alt="candidate.title || 'poster'" loading="lazy" />
-                        <div class="candidate-info">
-                          <span class="candidate-source">{{ candidate.source || '未知来源' }}</span>
-                          <span class="candidate-title">{{ candidate.title || '未命名' }}{{ candidate.applying ? " · 应用中" : "" }}</span>
-                          <span v-if="candidate.subtitle" class="candidate-subtitle">{{ candidate.subtitle }}</span>
-                        </div>
-                      </div>
-                      <div class="candidate-tooltip" aria-hidden="true">
-                        <strong>{{ candidate.source || '未知来源' }}</strong>
-                        <span>{{ candidate.title || '未命名' }}{{ candidate.applying ? " · 应用中" : "" }}</span>
-                        <span v-if="candidate.subtitle">{{ candidate.subtitle }}</span>
-                      </div>
+              <div
+                v-if="file.candidates.length > 0"
+                :key="`refresh-${file.video_path}-${file.searchRequestId}`"
+                class="candidate-grid"
+              >
+                <div
+                  v-for="candidate in file.candidates"
+                  :key="`${file.video_path}::${candidate.image_url}::${candidate.source || ''}::${candidate.__idx}`"
+                  class="candidate-item"
+                  :style="{ '--item-index': candidate.__idx }"
+                  :class="{ 'candidate-item--loading': candidate.applying || file.applying }"
+                  tabindex="0"
+                  @click="openCandidateDialog(file, candidate)"
+                  @keydown.enter.prevent="openCandidateDialog(file, candidate)"
+                  @keydown.space.prevent="openCandidateDialog(file, candidate)"
+                >
+                  <div class="candidate-surface">
+                    <img :src="candidate.image_url" :alt="candidate.title || 'poster'" loading="lazy" />
+                    <div class="candidate-info">
+                      <span class="candidate-source">{{ candidate.source || '未知来源' }}</span>
+                      <span class="candidate-title">{{ candidate.title || '未命名' }}{{ candidate.applying ? " · 应用中" : "" }}</span>
+                      <span v-if="candidate.subtitle" class="candidate-subtitle">{{ candidate.subtitle }}</span>
                     </div>
                   </div>
-                </article>
+                </div>
               </div>
-            </section>
+            </article>
+          </div>
+
+          <div v-if="filteredPosterFiles.length > pageSize" class="pagination-bar" aria-label="文件分页">
+            <span class="pagination-summary">{{ paginationSummary }}</span>
+            <div class="pagination-actions">
+              <button class="btn btn-secondary btn-small pagination-arrow" type="button" @click="goToPreviousPage" :disabled="currentPage <= 1" aria-label="上一页">←</button>
+              <span class="pagination-current">第 {{ currentPage }} / {{ totalPages }} 页</span>
+              <button class="btn btn-secondary btn-small pagination-arrow" type="button" @click="goToNextPage" :disabled="currentPage >= totalPages" aria-label="下一页">→</button>
+            </div>
+          </div>
+        </section>
+
+        <div v-if="candidateDialog && candidateDialogDetails.file && candidateDialogDetails.candidate" class="candidate-modal" @click.self="closeCandidateDialog">
+          <div class="candidate-modal-card" role="dialog" aria-modal="true" aria-label="候选海报详情">
+            <button class="candidate-modal-close" type="button" @click="closeCandidateDialog" aria-label="关闭详情">×</button>
+            <img class="candidate-modal-image" :src="candidateDialogDetails.candidate.image_url" :alt="candidateDialogDetails.candidate.title || 'poster'" />
+            <div class="candidate-modal-body">
+              <span class="candidate-source">{{ candidateDialogDetails.candidate.source || '未知来源' }}</span>
+              <h3 class="candidate-modal-title">{{ candidateDialogDetails.candidate.title || '未命名' }}</h3>
+              <p v-if="candidateDialogDetails.candidate.subtitle" class="candidate-modal-subtitle">{{ candidateDialogDetails.candidate.subtitle }}</p>
+              <p class="candidate-modal-file">{{ candidateDialogDetails.file.file_name }}</p>
+              <div class="candidate-modal-actions">
+                <button class="btn btn-secondary" type="button" @click="closeCandidateDialog">关闭</button>
+                <button class="btn btn-primary" type="button" @click="applyPoster(candidateDialogDetails.file, candidateDialogDetails.candidate)" :disabled="candidateDialogDetails.file.applying || candidateDialogDetails.candidate.applying" :class="{ 'btn-loading': candidateDialogDetails.candidate.applying || candidateDialogDetails.file.applying }">
+                  {{ candidateDialogDetails.candidate.applying || candidateDialogDetails.file.applying ? "应用中..." : "应用海报" }}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </main>

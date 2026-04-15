@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import hashlib
 import logging
 import re
@@ -45,7 +46,9 @@ from mv_scraper.cli import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_TARGET = ""
+DEFAULT_TARGET = "/media"
+PREFERENCES_BASENAME = ".mv_metadata_studio_ui.json"
+PREFERENCES_DIR = Path("/app/runtime")
 IGNORED_QUERY_VALUES = {"none", "null", "undefined", "nan", "留空自动", "自动"}
 SEARCH_VARIANT_KEYWORDS = (
     "performance video",
@@ -246,6 +249,33 @@ class InMemoryJobState:
 
 
 STATE = InMemoryJobState()
+
+
+def resolve_preferences_path() -> Path:
+    preferred_dir = PREFERENCES_DIR if PREFERENCES_DIR.exists() else BASE_DIR
+    return preferred_dir / PREFERENCES_BASENAME
+
+
+def load_preferences() -> dict[str, Any]:
+    path = resolve_preferences_path()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        payload = {}
+
+    target = str(payload.get("target") or "").strip() or DEFAULT_TARGET
+    return {"target": target}
+
+
+def save_preferences(preferences: dict[str, Any]) -> dict[str, Any]:
+    current = load_preferences()
+    current.update(preferences)
+    current["target"] = str(current.get("target") or "").strip() or DEFAULT_TARGET
+
+    path = resolve_preferences_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(current, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
+    return current
 
 
 def parse_bool(value: Any, default: bool = False) -> bool:
@@ -1179,6 +1209,7 @@ def run_job(job_id: str, options: JobOptions) -> None:
 
 @app.get("/")
 def index() -> str:
+    preferences = load_preferences()
     static_candidates = (
         BASE_DIR / "static" / "styles.css",
         BASE_DIR / "static" / "app.js",
@@ -1195,11 +1226,30 @@ def index() -> str:
 
     return render_template(
         "index.html",
-        default_target=DEFAULT_TARGET,
+        default_target=preferences.get("target") or DEFAULT_TARGET,
         default_ai_provider=DEFAULT_AI_PROVIDER,
         default_ai_model=DEFAULT_AI_MODEL,
         static_version=static_version,
     )
+
+
+@app.get("/api/preferences")
+def api_preferences() -> Any:
+    return jsonify(load_preferences())
+
+
+@app.post("/api/preferences")
+def api_save_preferences() -> Any:
+    payload = request.get_json(silent=True) or {}
+    target = str(payload.get("target", "")).strip() or DEFAULT_TARGET
+
+    try:
+        target_path = Path(target).expanduser().resolve()
+    except OSError as exc:
+        return jsonify({"error": f"invalid target path: {exc}"}), 400
+
+    saved = save_preferences({"target": str(target_path)})
+    return jsonify(saved)
 
 
 @app.get("/api/status")
