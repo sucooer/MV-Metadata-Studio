@@ -10,7 +10,7 @@ from mv_scraper.web import app, ensure_nfo_after_manual_apply, normalize_optiona
 
 class FilesApiTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.tmp_dir = Path(tempfile.mkdtemp(prefix="mv_web_test_"))
+        self.tmp_dir = Path(tempfile.mkdtemp(prefix="mv_web_check_"))
         (self.tmp_dir / "Adele - Hello.mp4").touch()
         self.client = app.test_client()
 
