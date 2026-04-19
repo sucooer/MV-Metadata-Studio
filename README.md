@@ -131,10 +131,3 @@ python -m mv_scraper.cli "./your-mv-folder" --dry-run
 NFO 使用 `<musicvideo>` 结构，包含常见字段（title、artist、album、plot、premiered、year、studio、thumb、uniqueid 等），可被 Emby 读取。
 若配置了 AI 参数，`<plot>` 会优先由 AI 结合歌曲信息生成；未配置时会使用清洗后的模板文案，避免直接写入原始 YouTube 简介。
 同时会在可用时写入 `rating` / `userrating` / `votes`（基于可获取的公开视频热度估算）。
-
-## 注意事项
-
-- YouTube 搜索依赖 `yt-dlp`，若网络受限可以使用代理。
-- iTunes 数据并非总能命中，命中失败时会回退到文件名 + YouTube 数据。
-- 当 YouTube 或官方来源没有可用海报时，会继续尝试 [lgych](https://www.lgych.com/) / Deezer / TheAudioDB 等资源站点。
-- 文件命名越规范（如 `歌手 - 歌名`），识别准确率越高。
