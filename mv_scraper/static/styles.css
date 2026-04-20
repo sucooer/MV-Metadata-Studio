@@ -409,17 +409,17 @@ body::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  font-size: 14px;
+  gap: 8px;
+  font-size: 13px;
   font-weight: 600;
-  padding: 14px 28px;
-  border-radius: var(--radius-md);
+  padding: 10px 20px;
+  border-radius: 20px;
   border: none;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  min-height: 50px;
+  min-height: 40px;
   white-space: nowrap;
-  margin: 4px;
+  margin: 3px;
 }
 
 .btn-primary {
@@ -897,6 +897,23 @@ body::after {
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
+@media (min-width: 769px) {
+  .btn {
+    padding: 12px 24px;
+    font-size: 14px;
+    min-height: 46px;
+    border-radius: 25px;
+    gap: 10px;
+    margin: 4px;
+  }
+
+  .btn-small {
+    padding: 8px 16px;
+    font-size: 13px;
+    min-height: 38px;
+  }
+}
+
 @media (max-width: 768px) {
   .app-shell {
     padding: 16px 12px 60px;
@@ -957,20 +974,29 @@ body::after {
   }
 
   .workspace-summary {
-    justify-content: center;
-    padding: 12px 16px;
+    display: none;
   }
 
   .workspace-toolbar .panel-actions {
-    flex-direction: column;
-    gap: 10px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
     width: 100%;
+    justify-content: center;
   }
 
   .workspace-toolbar .btn {
-    width: 100%;
+    flex: 1;
+    min-width: calc(50% - 4px);
+    max-width: calc(50% - 4px);
     margin: 0;
     justify-content: center;
+  }
+
+  .workspace-toolbar .btn-small {
+    flex: 1;
+    min-width: calc(50% - 4px);
+    max-width: calc(50% - 4px);
   }
 
   .candidate-grid {
@@ -1047,14 +1073,16 @@ body::after {
   }
 
   .btn {
-    padding: 12px 20px;
-    min-height: 46px;
+    padding: 8px 14px;
+    font-size: 12px;
+    min-height: 36px;
     margin: 2px;
   }
 
   .btn-small {
-    padding: 10px 16px;
-    min-height: 40px;
+    padding: 6px 12px;
+    font-size: 11px;
+    min-height: 32px;
   }
 
   .panel-title {
